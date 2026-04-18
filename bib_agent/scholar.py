@@ -6,7 +6,7 @@ import re
 import subprocess
 import urllib.parse
 
-from .config import resolve_path
+from .config import detect_chrome_executable, resolve_path
 from .http import HttpClient, url_with_query
 
 
@@ -73,6 +73,19 @@ def _browser_fetch_html(url: str, config: dict) -> str:
     auth_config = config.get("auth", {})
     browser_script = resolve_path(config, auth_config["browser_script"])
     storage_state = resolve_path(config, auth_config["storage_state_path"])
+    chrome_executable = auth_config.get("chrome_executable")
+    chrome_path = None
+    if chrome_executable:
+        candidate = resolve_path(config, chrome_executable)
+        if candidate.exists():
+            chrome_path = candidate
+    if chrome_path is None:
+        chrome_path = detect_chrome_executable()
+    if chrome_path is None:
+        raise RuntimeError(
+            "Could not locate a Chrome/Chromium executable automatically. "
+            "Set auth.chrome_executable in config.json or run precheck --write."
+        )
     command = [
         "node",
         str(browser_script),
@@ -82,7 +95,7 @@ def _browser_fetch_html(url: str, config: dict) -> str:
         "--storage-state",
         str(storage_state),
         "--chrome-executable",
-        str(resolve_path(config, auth_config["chrome_executable"])),
+        str(chrome_path),
         "--headless",
         "true" if auth_config.get("headless", True) else "false",
     ]

@@ -22,8 +22,8 @@
     "enabled": true,
     "storage_state_path": "state/scholar_storage_state.json",
     "browser_script": "scripts/scholar_browser.mjs",
-    "chrome_executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "chrome_user_data_dir": "~/Library/Application Support/Google/Chrome",
+    "chrome_executable": "",
+    "chrome_user_data_dir": "",
     "chrome_profile_directory": "Default",
     "headless": true,
     "require_session": false
@@ -67,8 +67,8 @@
     "enabled": true,
     "transport": "gmail_api",
     "gmail_sender": "your-gmail@gmail.com",
-    "gmail_token_file": "~/sys/gmail/gmail_token.json",
-    "gmail_creds_file": "~/sys/gmail/gmail_credentials.json",
+    "gmail_token_file": "$HOME/sys/gmail/gmail_token.json",
+    "gmail_creds_file": "$HOME/sys/gmail/gmail_credentials.json",
     "report_from": "your-email@example.com",
     "report_recipients": [
       "your-email@example.com"
@@ -82,17 +82,17 @@
     "conference": {
       "enabled": true,
       "label": "Conference Publications",
-      "path": "~/resume/bibs/pub-conference.bib"
+      "path": "$HOME/resume/bibs/pub-conference.bib"
     },
     "journal": {
       "enabled": true,
       "label": "Journal Publications",
-      "path": "~/resume/bibs/pub-journal.bib"
+      "path": "$HOME/resume/bibs/pub-journal.bib"
     },
     "techreport": {
       "enabled": true,
       "label": "Tech Reports and Preprints",
-      "path": "~/resume/bibs/pub-tech-report.bib"
+      "path": "$HOME/resume/bibs/pub-tech-report.bib"
     }
   },
   "state_file": "state/agent_state.json"

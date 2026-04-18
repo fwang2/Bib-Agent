@@ -26,7 +26,15 @@ from .bibtex import (
     strip_managed_block,
     validate_rendered_chunks,
 )
-from .config import active_bib_files, load_config, resolve_path, resolve_routed_category, save_config
+from .config import (
+    active_bib_files,
+    default_chrome_user_data_dir,
+    detect_chrome_executable,
+    load_config,
+    resolve_path,
+    resolve_routed_category,
+    save_config,
+)
 from .http import HttpClient
 from .metadata import bibtex_entry, enrich_record, extract_arxiv_id, extract_doi, make_bib_key, normalize_title
 from .render import render_bibliography_pdf
@@ -593,6 +601,24 @@ def auth_bootstrap(config_path: str) -> None:
     auth_config = config.get("auth", {})
     browser_script = resolve_path(config, auth_config["browser_script"])
     storage_state = resolve_path(config, auth_config["storage_state_path"])
+    chrome_executable = auth_config.get("chrome_executable")
+    chrome_path = None
+    if chrome_executable:
+        candidate = resolve_path(config, chrome_executable)
+        if candidate.exists():
+            chrome_path = candidate
+    if chrome_path is None:
+        chrome_path = detect_chrome_executable()
+    if chrome_path is None:
+        raise RuntimeError(
+            "Could not locate a Chrome/Chromium executable automatically. "
+            "Set auth.chrome_executable in config.json or run precheck --write."
+        )
+    user_data_dir_value = auth_config.get("chrome_user_data_dir")
+    if user_data_dir_value:
+        user_data_dir = resolve_path(config, user_data_dir_value)
+    else:
+        user_data_dir = default_chrome_user_data_dir()
     command = [
         "node",
         str(browser_script),
@@ -604,9 +630,9 @@ def auth_bootstrap(config_path: str) -> None:
         "--storage-state",
         str(storage_state),
         "--chrome-executable",
-        str(resolve_path(config, auth_config["chrome_executable"])),
+        str(chrome_path),
         "--chrome-user-data-dir",
-        str(resolve_path(config, auth_config["chrome_user_data_dir"])),
+        str(user_data_dir),
         "--chrome-profile-directory",
         auth_config.get("chrome_profile_directory", "Default"),
         "--headless",
@@ -890,34 +916,21 @@ def _today_iso() -> str:
 
 
 def _platform_defaults() -> dict:
-    home = str(Path.home())
     if sys.platform == "darwin":
         return {
-            "chrome_executable_candidates": [
-                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                "/Applications/Chromium.app/Contents/MacOS/Chromium",
-            ],
-            "chrome_user_data_dir": "~/Library/Application Support/Google/Chrome",
+            "chrome_executable_candidates": [str(detect_chrome_executable() or "")],
+            "chrome_user_data_dir": str(default_chrome_user_data_dir()),
             "sendmail_candidates": ["/usr/sbin/sendmail", "/usr/lib/sendmail"],
         }
     if sys.platform.startswith("linux"):
         return {
-            "chrome_executable_candidates": [
-                "/usr/bin/google-chrome",
-                "/usr/bin/google-chrome-stable",
-                "/usr/bin/chromium",
-                "/usr/bin/chromium-browser",
-                shutil.which("google-chrome") or "",
-                shutil.which("google-chrome-stable") or "",
-                shutil.which("chromium") or "",
-                shutil.which("chromium-browser") or "",
-            ],
-            "chrome_user_data_dir": os.path.join(home, ".config/google-chrome"),
+            "chrome_executable_candidates": [str(detect_chrome_executable() or "")],
+            "chrome_user_data_dir": str(default_chrome_user_data_dir()),
             "sendmail_candidates": ["/usr/sbin/sendmail", "/usr/lib/sendmail", shutil.which("sendmail") or ""],
         }
     return {
-        "chrome_executable_candidates": [shutil.which("chrome") or "", shutil.which("google-chrome") or ""],
-        "chrome_user_data_dir": "~/chrome-profile",
+        "chrome_executable_candidates": [str(detect_chrome_executable() or "")],
+        "chrome_user_data_dir": str(default_chrome_user_data_dir()),
         "sendmail_candidates": [shutil.which("sendmail") or ""],
     }
 
@@ -943,7 +956,12 @@ def precheck(config_path: str, write: bool = False) -> None:
     sendmail_path = notifications.get("sendmail_path")
 
     detected_chrome = _first_existing_path(defaults["chrome_executable_candidates"])
-    if not chrome_executable or not resolve_path(config, chrome_executable).exists():
+    if not chrome_executable:
+        if detected_chrome:
+            findings.append(f"Chrome executable auto-detect available: {detected_chrome}")
+        else:
+            findings.append("Chrome executable not configured and auto-detect failed")
+    elif not resolve_path(config, chrome_executable).exists():
         findings.append(f"Chrome executable missing or invalid: {chrome_executable}")
         if detected_chrome:
             fixes.append(f"Set auth.chrome_executable -> {detected_chrome}")
@@ -952,7 +970,9 @@ def precheck(config_path: str, write: bool = False) -> None:
     else:
         findings.append(f"Chrome executable OK: {resolve_path(config, chrome_executable)}")
 
-    if not chrome_user_data_dir or not Path(chrome_user_data_dir).expanduser().exists():
+    if not chrome_user_data_dir:
+        findings.append(f"Chrome user data dir auto-default: {defaults['chrome_user_data_dir']}")
+    elif not Path(chrome_user_data_dir).expanduser().exists():
         findings.append(f"Chrome user data dir missing or invalid: {chrome_user_data_dir}")
         default_user_data = defaults["chrome_user_data_dir"]
         fixes.append(f"Set auth.chrome_user_data_dir -> {default_user_data}")

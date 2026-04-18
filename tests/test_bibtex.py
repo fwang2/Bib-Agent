@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from bib_agent.config import active_bib_files, load_config, resolve_routed_category, save_config
+from bib_agent.config import active_bib_files, default_chrome_user_data_dir, detect_chrome_executable, load_config, resolve_path, resolve_routed_category, save_config
 from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
 from bib_agent.cli import _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
 from bib_agent.metadata import _crossref_search, emphasize_authors, enrich_record, make_bib_key
@@ -237,6 +237,17 @@ Analysis of Large-Scale Storage Systems},
         self.assertEqual(set(active_bib_files(config)), {"all"})
         self.assertEqual(resolve_routed_category(config, "conference"), "all")
         self.assertEqual(resolve_routed_category(config, "journal"), "all")
+
+    def test_resolve_path_expands_home_environment_variable(self):
+        config = {"_root_dir": "/tmp"}
+        resolved = str(resolve_path(config, "$HOME/example/file.txt"))
+        self.assertTrue(resolved.endswith("/example/file.txt"))
+
+    def test_chrome_defaults_helpers_return_expected_types(self):
+        user_data_dir = default_chrome_user_data_dir()
+        self.assertTrue(str(user_data_dir))
+        detected = detect_chrome_executable()
+        self.assertTrue(detected is None or detected.exists())
 
     def test_first_existing_path_picks_first_real_candidate(self):
         chosen = _first_existing_path(["", "/definitely/missing", "/Users/f7b/Bib-Agent/config.example.json"])

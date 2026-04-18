@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import sys
 from pathlib import Path
 
 
@@ -21,10 +24,56 @@ def save_config(config: dict, path: str | Path | None = None) -> None:
 
 
 def resolve_path(config: dict, value: str) -> Path:
-    expanded = Path(value).expanduser()
+    expanded = Path(os.path.expandvars(value)).expanduser()
     if expanded.is_absolute():
         return expanded.resolve()
     return Path(config["_root_dir"], expanded).resolve()
+
+
+def detect_chrome_executable() -> Path | None:
+    candidates: list[str] = []
+    if sys.platform == "darwin":
+        candidates.extend(
+            [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ]
+        )
+    elif sys.platform.startswith("linux"):
+        candidates.extend(
+            [
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+            ]
+        )
+
+    for binary in ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"]:
+        resolved = shutil.which(binary)
+        if resolved:
+            candidates.append(resolved)
+
+    for candidate in candidates:
+        if candidate and Path(candidate).expanduser().exists():
+            return Path(candidate).expanduser().resolve()
+    return None
+
+
+def default_chrome_user_data_dir() -> Path:
+    home = Path.home()
+    if sys.platform == "darwin":
+        return (home / "Library/Application Support/Google/Chrome").resolve()
+    if sys.platform.startswith("linux"):
+        for candidate in [
+            home / ".config/google-chrome",
+            home / ".config/google-chrome-stable",
+            home / ".config/chromium",
+        ]:
+            if candidate.exists():
+                return candidate.resolve()
+        return (home / ".config/google-chrome").resolve()
+    return (home / "chrome-profile").resolve()
 
 
 def active_bib_files(config: dict) -> dict[str, dict]:
