@@ -21,6 +21,7 @@ from .bibtex import (
     ensure_file_with_managed_block,
     extract_bib_entries,
     extract_managed_chunks,
+    has_conflict_markers,
     remove_bib_entry,
     replace_managed_block,
     strip_managed_block,
@@ -69,6 +70,24 @@ def _existing_chunks_by_scholar_id(config: dict) -> dict[str, dict]:
             if scholar_id:
                 result[scholar_id] = {"metadata": chunk.metadata, "raw_entry": chunk.raw_entry}
     return result
+
+
+def _assert_no_conflict_markers(config: dict) -> None:
+    conflicted: list[str] = []
+    for _, bib_config in active_bib_files(config).items():
+        path = resolve_path(config, bib_config["path"])
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        if has_conflict_markers(content):
+            conflicted.append(str(path))
+    if conflicted:
+        formatted = "\n".join(f"- {path}" for path in conflicted)
+        raise RuntimeError(
+            "Refusing to update because one or more bibliography files contain unresolved Git merge-conflict markers.\n"
+            f"{formatted}\n"
+            "Resolve the conflict markers first, then rerun the updater."
+        )
 
 
 def _existing_manual_entries(config: dict) -> list[dict]:
@@ -188,6 +207,12 @@ def _reconcile_record(scholar_id: str, enriched: dict, existing_chunks: dict[str
 
 def _render_chunk(metadata: dict, entry_text: str) -> str:
     return f"{AGENT_PREFIX}{json.dumps(metadata, sort_keys=True)}\n{entry_text}"
+
+
+def _stable_agent_metadata(metadata: dict) -> dict:
+    stable = dict(metadata)
+    stable.pop("status", None)
+    return stable
 
 
 def _is_manual_techreport_superseded(manual_entry: dict | None, publication_category: str) -> bool:
@@ -651,6 +676,7 @@ def auth_bootstrap(config_path: str) -> None:
 def update(config_path: str) -> None:
     config = load_config(config_path)
     active_targets = active_bib_files(config)
+    _assert_no_conflict_markers(config)
     client = HttpClient(
         min_interval_seconds=float(config["scholar"].get("min_request_interval_seconds", 1.0)),
         timeout_seconds=int(config["scholar"].get("request_timeout_seconds", 20)),
@@ -785,7 +811,6 @@ def update(config_path: str) -> None:
             "title_fingerprint": normalize_title(enriched.get("title", "")),
         }
         if status == "new":
-            metadata["status"] = "new"
             item_report["status"] = "new"
             if superseded_manual_techreport and matched_entry:
                 item_report["reason"] = (
@@ -801,14 +826,12 @@ def update(config_path: str) -> None:
             existing_raw = existing_chunks[scholar_id]["raw_entry"].strip()
             if existing_raw != entry_text.strip():
                 reconciliation_summary["updated"] += 1
-                metadata["status"] = "updated"
                 item_report["status"] = "updated"
             else:
                 reconciliation_summary["unchanged-agent"] += 1
-                metadata["status"] = "unchanged-agent"
                 item_report["status"] = "unchanged-agent"
         item_report["key"] = key
-        rendered_by_category[routed_category].append(_render_chunk(metadata, entry_text))
+        rendered_by_category[routed_category].append(_render_chunk(_stable_agent_metadata(metadata), entry_text))
         report_items.append(item_report)
         touched_ids.add(scholar_id)
 
@@ -827,7 +850,7 @@ def update(config_path: str) -> None:
                 continue
             category = existing["metadata"].get("category", resolve_routed_category(config, "techreport"))
             rendered_by_category.setdefault(category, []).append(
-                _render_chunk(existing["metadata"], existing["raw_entry"])
+                _render_chunk(_stable_agent_metadata(existing["metadata"]), existing["raw_entry"])
             )
 
     file_reports = []

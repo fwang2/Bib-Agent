@@ -2,8 +2,8 @@ import unittest
 from pathlib import Path
 
 from bib_agent.config import active_bib_files, default_chrome_user_data_dir, detect_chrome_executable, load_config, resolve_path, resolve_routed_category, save_config
-from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
-from bib_agent.cli import _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
+from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, has_conflict_markers, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
+from bib_agent.cli import _assert_no_conflict_markers, _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
 from bib_agent.metadata import _crossref_search, emphasize_authors, enrich_record, make_bib_key
 from bib_agent.render import _render_tex
 
@@ -81,6 +81,11 @@ Analysis of Large-Scale Storage Systems},
         updated = remove_bib_entry(content, "@misc{old,\n  title = {Old}\n}")
         self.assertNotIn("@misc{old", updated)
         self.assertIn("@article{keep", updated)
+
+    def test_has_conflict_markers_detects_git_conflicts(self):
+        content = "<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> branch\n"
+        self.assertTrue(has_conflict_markers(content))
+        self.assertFalse(has_conflict_markers("@article{ok,\n  title = {Fine}\n}\n"))
 
     def test_make_bib_key_uses_incremental_year_suffix(self):
         existing = {"f7b-2026a", "f7b-2026b", "fwang2:2025a"}
@@ -260,6 +265,16 @@ Analysis of Large-Scale Storage Systems},
         loaded = load_config(path)
         self.assertEqual(loaded["a"], 1)
         self.assertNotIn("_config_path", path.read_text(encoding="utf-8"))
+
+    def test_assert_no_conflict_markers_raises_for_conflicted_bib(self):
+        path = Path("/tmp/bib_agent_conflict_test.bib")
+        path.write_text("<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> branch\n", encoding="utf-8")
+        config = {
+            "_root_dir": "/tmp",
+            "bib_files": {"journal": {"enabled": True, "path": str(path)}},
+        }
+        with self.assertRaisesRegex(RuntimeError, "merge-conflict markers"):
+            _assert_no_conflict_markers(config)
 
     def test_format_text_report_is_email_friendly(self):
         report = {

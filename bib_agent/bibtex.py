@@ -33,6 +33,10 @@ def ensure_file_with_managed_block(path: Path, start_marker: str, end_marker: st
     path.write_text(updated, encoding="utf-8")
 
 
+def has_conflict_markers(content: str) -> bool:
+    return any(marker in content for marker in ("<<<<<<< ", "=======", ">>>>>>> "))
+
+
 def inject_managed_block_if_missing(content: str, start_marker: str, end_marker: str) -> str:
     if start_marker in content and end_marker in content:
         return content
