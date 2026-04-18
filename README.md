@@ -60,6 +60,8 @@ The most important sections are:
   - names to emphasize and whether to preserve original name order
 - `notifications`
   - email transport and recipients
+- `git`
+  - optional automatic commit of changed bib files when those files live inside a Git repo
 
 ### Scholar authentication bootstrap
 
@@ -107,7 +109,26 @@ This will:
 - reconcile them against manual and agent-owned BibTeX content,
 - update the managed blocks,
 - write reports,
+- optionally auto-commit changed bib files if `git.auto_commit_changed_bibs` is enabled and their directory is inside a Git repo,
 - send an email only if the run has `new` or `updated` entries.
+
+### Optional Git auto-commit
+
+If you want the updater to commit changed bib files automatically after a successful run, enable this in [config.json](/Users/f7b/Bib-Agent/config.json):
+
+```json
+"git": {
+  "auto_commit_changed_bibs": true,
+  "auto_commit_message": "Bib Agent update"
+}
+```
+
+Behavior:
+
+- only runs when one or more configured bib files actually changed
+- only runs for bib files that are inside a Git repo
+- stages and commits only the changed bib paths, not unrelated files in the same repo
+- can be turned off at any time by setting `auto_commit_changed_bibs` back to `false`
 
 ### Bootstrap baseline
 

@@ -78,6 +78,10 @@
     "subject_prefix": "Bibliography Agent",
     "sendmail_path": "/usr/sbin/sendmail"
   },
+  "git": {
+    "auto_commit_changed_bibs": false,
+    "auto_commit_message": "Bib Agent update"
+  },
   "bib_files": {
     "conference": {
       "enabled": true,

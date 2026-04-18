@@ -514,6 +514,93 @@ def _send_report_email(config: dict, report: dict) -> bool:
     return True
 
 
+def _git_repo_root_for_path(path: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "-C", str(Path(path).parent), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def _auto_commit_changed_bibs(config: dict, file_reports: list[dict]) -> list[str]:
+    git_config = config.get("git", {})
+    if not git_config.get("auto_commit_changed_bibs", False):
+        return []
+
+    changed_paths = [item["path"] for item in file_reports if item.get("changed")]
+    if not changed_paths:
+        return []
+
+    repo_to_paths: dict[str, list[str]] = {}
+    for path in changed_paths:
+        repo_root = _git_repo_root_for_path(path)
+        if repo_root:
+            repo_to_paths.setdefault(repo_root, []).append(path)
+
+    commits: list[str] = []
+    for repo_root, paths in repo_to_paths.items():
+        rel_paths = [str(Path(path).resolve().relative_to(Path(repo_root).resolve())) for path in paths]
+        message = git_config.get(
+            "auto_commit_message",
+            f"Bib Agent update {_today_iso()}",
+        )
+        stage_completed = subprocess.run(
+            ["git", "-C", repo_root, "add", "--", *rel_paths],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if stage_completed.returncode != 0:
+            raise RuntimeError(
+                "Automatic bib staging failed.\n"
+                f"repo: {repo_root}\n"
+                f"stdout:\n{stage_completed.stdout}\n"
+                f"stderr:\n{stage_completed.stderr}"
+            )
+
+        diff_completed = subprocess.run(
+            ["git", "-C", repo_root, "diff", "--cached", "--quiet", "--", *rel_paths],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if diff_completed.returncode == 0:
+            continue
+        if diff_completed.returncode not in {0, 1}:
+            raise RuntimeError(
+                "Automatic bib pre-commit check failed.\n"
+                f"repo: {repo_root}\n"
+                f"stdout:\n{diff_completed.stdout}\n"
+                f"stderr:\n{diff_completed.stderr}"
+            )
+
+        commit_completed = subprocess.run(
+            ["git", "-C", repo_root, "commit", "-m", message, "--", *rel_paths],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if commit_completed.returncode == 0:
+            commits.append(f"{repo_root}: {message}")
+            continue
+        if (
+            "no changes added to commit" in commit_completed.stderr.lower()
+            or "nothing to commit" in commit_completed.stdout.lower()
+        ):
+            continue
+        raise RuntimeError(
+            "Automatic bib commit failed.\n"
+            f"repo: {repo_root}\n"
+            f"stdout:\n{commit_completed.stdout}\n"
+            f"stderr:\n{commit_completed.stderr}"
+        )
+    return commits
+
+
 def _format_text_report(report: dict, max_listed_items: int) -> str:
     summary = report["summary"]
     fetch = report.get("fetch", {})
@@ -925,10 +1012,15 @@ def update(config_path: str) -> None:
         "reconciliation": reconciliation_summary,
     }
     _write_report_files(config, report)
+    commit_notes = _auto_commit_changed_bibs(config, file_reports)
     email_sent = _send_report_email(config, report)
 
     print(
-        (_format_text_report(report, 5).strip() + ("\n\nEmail notification: sent" if email_sent else ""))
+        (
+            _format_text_report(report, 5).strip()
+            + (("\n\nGit auto-commit:\n- " + "\n- ".join(commit_notes)) if commit_notes else "")
+            + ("\n\nEmail notification: sent" if email_sent else "")
+        )
     )
 
 

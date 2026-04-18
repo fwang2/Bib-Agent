@@ -1,9 +1,11 @@
 import unittest
 from pathlib import Path
+import subprocess
+import tempfile
 
 from bib_agent.config import active_bib_files, default_chrome_user_data_dir, detect_chrome_executable, load_config, resolve_path, resolve_routed_category, save_config
 from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, has_conflict_markers, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
-from bib_agent.cli import _assert_no_conflict_markers, _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
+from bib_agent.cli import _assert_no_conflict_markers, _auto_commit_changed_bibs, _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _git_repo_root_for_path, _is_manual_techreport_superseded, _notification_should_send
 from bib_agent.metadata import _crossref_search, emphasize_authors, enrich_record, make_bib_key
 from bib_agent.render import _render_tex
 
@@ -275,6 +277,54 @@ Analysis of Large-Scale Storage Systems},
         }
         with self.assertRaisesRegex(RuntimeError, "merge-conflict markers"):
             _assert_no_conflict_markers(config)
+
+    def test_git_repo_root_for_non_repo_path_returns_none(self):
+        self.assertIsNone(_git_repo_root_for_path("/tmp/not-a-repo-file.bib"))
+
+    def test_auto_commit_changed_bibs_disabled_is_noop(self):
+        config = {"git": {"auto_commit_changed_bibs": False}}
+        notes = _auto_commit_changed_bibs(config, [{"path": "/tmp/x.bib", "changed": True}])
+        self.assertEqual(notes, [])
+
+    def test_auto_commit_changed_bibs_commits_only_changed_bib(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            bib_path = repo / "pubs.bib"
+            other_path = repo / "notes.txt"
+            bib_path.write_text("@article{a,\n  title = {A}\n}\n", encoding="utf-8")
+            other_path.write_text("local note\n", encoding="utf-8")
+
+            subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "pubs.bib", "notes.txt"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "commit", "-m", "initial"], cwd=repo, check=True, capture_output=True, text=True)
+
+            bib_path.write_text("@article{a,\n  title = {Updated A}\n}\n", encoding="utf-8")
+            other_path.write_text("local note\nwith unstaged change\n", encoding="utf-8")
+
+            config = {"git": {"auto_commit_changed_bibs": True, "auto_commit_message": "Bib Agent update"}}
+            notes = _auto_commit_changed_bibs(config, [{"path": str(bib_path), "changed": True}])
+
+            self.assertEqual(len(notes), 1)
+            log = subprocess.run(
+                ["git", "log", "-1", "--pretty=%s"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(log.stdout.strip(), "Bib Agent update")
+
+            status = subprocess.run(
+                ["git", "status", "--short"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertIn(" M notes.txt", status.stdout)
+            self.assertNotIn("pubs.bib", status.stdout)
 
     def test_format_text_report_is_email_friendly(self):
         report = {
