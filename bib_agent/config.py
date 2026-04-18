@@ -14,6 +14,12 @@ def load_config(path: str | Path) -> dict:
     return data
 
 
+def save_config(config: dict, path: str | Path | None = None) -> None:
+    config_path = Path(path or config.get("_config_path") or "config.json")
+    payload = {key: value for key, value in config.items() if not key.startswith("_")}
+    config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
 def resolve_path(config: dict, value: str) -> Path:
     expanded = Path(value).expanduser()
     if expanded.is_absolute():

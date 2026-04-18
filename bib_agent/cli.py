@@ -5,8 +5,11 @@ import getpass
 import base64
 import html
 import json
+import os
 import socket
 import subprocess
+import sys
+import shutil
 from email.message import EmailMessage
 from pathlib import Path
 import urllib.parse
@@ -23,7 +26,7 @@ from .bibtex import (
     strip_managed_block,
     validate_rendered_chunks,
 )
-from .config import active_bib_files, load_config, resolve_path, resolve_routed_category
+from .config import active_bib_files, load_config, resolve_path, resolve_routed_category, save_config
 from .http import HttpClient
 from .metadata import bibtex_entry, enrich_record, extract_arxiv_id, extract_doi, make_bib_key, normalize_title
 from .render import render_bibliography_pdf
@@ -886,17 +889,143 @@ def _today_iso() -> str:
     return date.today().isoformat()
 
 
+def _platform_defaults() -> dict:
+    home = str(Path.home())
+    if sys.platform == "darwin":
+        return {
+            "chrome_executable_candidates": [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ],
+            "chrome_user_data_dir": "~/Library/Application Support/Google/Chrome",
+            "sendmail_candidates": ["/usr/sbin/sendmail", "/usr/lib/sendmail"],
+        }
+    if sys.platform.startswith("linux"):
+        return {
+            "chrome_executable_candidates": [
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                shutil.which("google-chrome") or "",
+                shutil.which("google-chrome-stable") or "",
+                shutil.which("chromium") or "",
+                shutil.which("chromium-browser") or "",
+            ],
+            "chrome_user_data_dir": os.path.join(home, ".config/google-chrome"),
+            "sendmail_candidates": ["/usr/sbin/sendmail", "/usr/lib/sendmail", shutil.which("sendmail") or ""],
+        }
+    return {
+        "chrome_executable_candidates": [shutil.which("chrome") or "", shutil.which("google-chrome") or ""],
+        "chrome_user_data_dir": "~/chrome-profile",
+        "sendmail_candidates": [shutil.which("sendmail") or ""],
+    }
+
+
+def _first_existing_path(candidates: list[str]) -> str | None:
+    for candidate in candidates:
+        if candidate and Path(candidate).expanduser().exists():
+            return str(Path(candidate).expanduser())
+    return None
+
+
+def precheck(config_path: str, write: bool = False) -> None:
+    config = load_config(config_path)
+    defaults = _platform_defaults()
+    findings: list[str] = []
+    fixes: list[str] = []
+
+    auth = config.setdefault("auth", {})
+    notifications = config.setdefault("notifications", {})
+
+    chrome_executable = auth.get("chrome_executable")
+    chrome_user_data_dir = auth.get("chrome_user_data_dir")
+    sendmail_path = notifications.get("sendmail_path")
+
+    detected_chrome = _first_existing_path(defaults["chrome_executable_candidates"])
+    if not chrome_executable or not resolve_path(config, chrome_executable).exists():
+        findings.append(f"Chrome executable missing or invalid: {chrome_executable}")
+        if detected_chrome:
+            fixes.append(f"Set auth.chrome_executable -> {detected_chrome}")
+            if write:
+                auth["chrome_executable"] = detected_chrome
+    else:
+        findings.append(f"Chrome executable OK: {resolve_path(config, chrome_executable)}")
+
+    if not chrome_user_data_dir or not Path(chrome_user_data_dir).expanduser().exists():
+        findings.append(f"Chrome user data dir missing or invalid: {chrome_user_data_dir}")
+        default_user_data = defaults["chrome_user_data_dir"]
+        fixes.append(f"Set auth.chrome_user_data_dir -> {default_user_data}")
+        if write:
+            auth["chrome_user_data_dir"] = default_user_data
+    else:
+        findings.append(f"Chrome user data dir OK: {Path(chrome_user_data_dir).expanduser()}")
+
+    detected_sendmail = _first_existing_path(defaults["sendmail_candidates"])
+    if notifications.get("transport", "sendmail") == "sendmail":
+        if not sendmail_path or not Path(sendmail_path).expanduser().exists():
+            findings.append(f"sendmail path missing or invalid: {sendmail_path}")
+            if detected_sendmail:
+                fixes.append(f"Set notifications.sendmail_path -> {detected_sendmail}")
+                if write:
+                    notifications["sendmail_path"] = detected_sendmail
+        else:
+            findings.append(f"sendmail path OK: {Path(sendmail_path).expanduser()}")
+
+    for label in ["gmail_token_file", "gmail_creds_file"]:
+        if label in notifications:
+            resolved = resolve_path(config, notifications[label])
+            if resolved.exists():
+                findings.append(f"{label} OK: {resolved}")
+            else:
+                findings.append(f"{label} missing: {resolved}")
+
+    for name, bib_config in active_bib_files(config).items():
+        bib_path = resolve_path(config, bib_config["path"])
+        if bib_path.exists():
+            findings.append(f"bib_files.{name} OK: {bib_path}")
+        else:
+            findings.append(f"bib_files.{name} missing: {bib_path}")
+
+    for binary in ["python3", "node", "npm"]:
+        findings.append(f"{binary}: {shutil.which(binary) or 'not found'}")
+
+    if write and fixes:
+        save_config(config, config_path)
+
+    print("Bibliography Agent Precheck")
+    print(f"Platform: {sys.platform}")
+    print("")
+    print("Checks")
+    for finding in findings:
+        print(f"- {finding}")
+    if fixes:
+        print("")
+        print("Suggested Fixes")
+        for fix in fixes:
+            print(f"- {fix}")
+    if write:
+        print("")
+        print("Config write: completed" if fixes else "Config write: no changes needed")
+    else:
+        print("")
+        print("Run `python3 update_bibs.py precheck --write` to apply detected safe defaults.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Google Scholar driven BibTeX updater.")
-    parser.add_argument("command", choices=["auth-bootstrap", "bootstrap", "update", "render-pdf"])
+    parser.add_argument("command", choices=["auth-bootstrap", "bootstrap", "update", "render-pdf", "precheck"])
     parser.add_argument("--config", default="config.json")
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
 
     if args.command == "auth-bootstrap":
         auth_bootstrap(args.config)
     elif args.command == "bootstrap":
         bootstrap(args.config)
+    elif args.command == "precheck":
+        precheck(args.config, write=args.write)
     elif args.command == "render-pdf":
         config = load_config(args.config)
         pdf_path = render_bibliography_pdf(config, args.output_dir)

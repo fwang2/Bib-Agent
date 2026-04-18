@@ -1,9 +1,9 @@
 import unittest
 from pathlib import Path
 
-from bib_agent.config import active_bib_files, resolve_routed_category
+from bib_agent.config import active_bib_files, load_config, resolve_routed_category, save_config
 from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
-from bib_agent.cli import _build_notification_message, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
+from bib_agent.cli import _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _is_manual_techreport_superseded, _notification_should_send
 from bib_agent.metadata import _crossref_search, emphasize_authors, enrich_record, make_bib_key
 from bib_agent.render import _render_tex
 
@@ -237,6 +237,18 @@ Analysis of Large-Scale Storage Systems},
         self.assertEqual(set(active_bib_files(config)), {"all"})
         self.assertEqual(resolve_routed_category(config, "conference"), "all")
         self.assertEqual(resolve_routed_category(config, "journal"), "all")
+
+    def test_first_existing_path_picks_first_real_candidate(self):
+        chosen = _first_existing_path(["", "/definitely/missing", "/Users/f7b/Bib-Agent/config.example.json"])
+        self.assertEqual(chosen, "/Users/f7b/Bib-Agent/config.example.json")
+
+    def test_save_config_strips_private_runtime_keys(self):
+        path = Path("/tmp/bib_agent_test_config.json")
+        config = {"a": 1, "_config_path": "/tmp/ignored.json", "_root_dir": "/tmp"}
+        save_config(config, path)
+        loaded = load_config(path)
+        self.assertEqual(loaded["a"], 1)
+        self.assertNotIn("_config_path", path.read_text(encoding="utf-8"))
 
     def test_format_text_report_is_email_friendly(self):
         report = {
