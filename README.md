@@ -1,70 +1,23 @@
 # Bibliography Agent
 
-Bib Agent is a Google Scholar driven bibliography maintenance tool for personal BibTeX collections.
+Bib Agent keeps personal BibTeX collections up to date from Google Scholar without disturbing hand-curated entries.
 
-It is designed for the workflow where:
+It discovers new publications from a Google Scholar profile, enriches incomplete metadata from DOI/Crossref, publisher pages, and arXiv, and safely updates one or more .bib files. Runs are idempotent, and email reports are sent whenever entries are added or changed.
 
-- you may already have hand-curated `.bib` files,
-- those manual entries must stay protected,
-- new publications should be discovered from your Google Scholar profile,
-- missing metadata should be enriched from stronger sources such as DOI/Crossref, publisher pages, and arXiv,
-- repeated runs should be safe and idempotent,
-- change notifications should be emailed when something new or updated is detected.
+The tool maintains a strict ownership boundary: manual BibTeX outside the managed block is preserved, and agent-generated entries are written only inside the marked managed block. The only exception is when a manual tech-report or preprint entry is superseded by a published journal or conference version.
 
-The project keeps a strict ownership boundary:
+**What it does**
+* Fetches publications from Google Scholar in reverse publication-date order
+* Supports authenticated headless Scholar access via a saved browser session
+* Updates one or more BibTeX files
+* Routes entries into buckets such as conference, journal, and techreport
+* Enriches metadata from DOI/Crossref, publisher pages, and arXiv
+* Highlights configured author names.
+* Produces text, JSON, and HTML change reports
+* Emails reports when new or updated entries are detected
+* Can render a bibliography-only PDF to verify compilation
 
-- manual BibTeX outside the managed block is preserved,
-- agent-generated BibTeX lives only inside the marked managed block,
-- one exception is supported: if a manual tech-report/preprint entry is later superseded by a journal or conference publication, the old manual tech-report entry may be removed and replaced by the new published entry.
-
-## What It Does
-
-Main capabilities:
-
-- fetches publications from a Google Scholar profile in reverse publication-date order,
-- supports authenticated headless Scholar access using a saved browser session,
-- updates one or more BibTeX files,
-- routes publications into logical buckets such as `conference`, `journal`, and `techreport`,
-- enriches metadata from DOI/Crossref, publisher landing pages, and arXiv,
-- emphasizes configured author names such as `Feiyi Wang`,
-- generates stable BibTeX keys like `f7b-2026a`,
-- writes text, JSON, and HTML change reports,
-- emails a report when a run produces new or updated entries,
-- can render a bibliography-only PDF to verify compilation.
-
-## Repository Layout
-
-Core files:
-
-- [update_bibs.py](/Users/f7b/Bib-Agent/update_bibs.py)
-- [config.json](/Users/f7b/Bib-Agent/config.json)
-- [config.example.json](/Users/f7b/Bib-Agent/config.example.json)
-- [DESIGN.md](/Users/f7b/Bib-Agent/DESIGN.md)
-- [README.md](/Users/f7b/Bib-Agent/README.md)
-
-Python package:
-
-- [bib_agent/cli.py](/Users/f7b/Bib-Agent/bib_agent/cli.py)
-- [bib_agent/config.py](/Users/f7b/Bib-Agent/bib_agent/config.py)
-- [bib_agent/http.py](/Users/f7b/Bib-Agent/bib_agent/http.py)
-- [bib_agent/scholar.py](/Users/f7b/Bib-Agent/bib_agent/scholar.py)
-- [bib_agent/metadata.py](/Users/f7b/Bib-Agent/bib_agent/metadata.py)
-- [bib_agent/bibtex.py](/Users/f7b/Bib-Agent/bib_agent/bibtex.py)
-- [bib_agent/render.py](/Users/f7b/Bib-Agent/bib_agent/render.py)
-
-Browser helper:
-
-- [scripts/scholar_browser.mjs](/Users/f7b/Bib-Agent/scripts/scholar_browser.mjs)
-- [package.json](/Users/f7b/Bib-Agent/package.json)
-- [package-lock.json](/Users/f7b/Bib-Agent/package-lock.json)
-
-Tests:
-
-- [tests/test_bibtex.py](/Users/f7b/Bib-Agent/tests/test_bibtex.py)
-
-Packaging:
-
-- [pyproject.toml](/Users/f7b/Bib-Agent/pyproject.toml)
+![HTML email report preview](docs/email-report-preview.png)
 
 ## Setup
 
@@ -168,21 +121,3 @@ python3 update_bibs.py bootstrap
 ```bash
 python3 update_bibs.py render-pdf
 ```
-
-Output PDF:
-
-- [build/bibliography-check/bibliography_check.pdf](/Users/f7b/Bib-Agent/build/bibliography-check/bibliography_check.pdf)
-
-## Reports
-
-Each update writes:
-
-- text report: [state/last_update_report.txt](/Users/f7b/Bib-Agent/state/last_update_report.txt)
-- JSON report: [state/last_update_report.json](/Users/f7b/Bib-Agent/state/last_update_report.json)
-- HTML report: [state/last_update_report.html](/Users/f7b/Bib-Agent/state/last_update_report.html)
-
-The HTML report is also used as the preferred email body.
-
-Small preview of the styled HTML/email output:
-
-![HTML email report preview](docs/email-report-preview.png)
