@@ -1,10 +1,10 @@
-# Bib Agent
+# Bibliography Agent
 
 Bib Agent is a Google Scholar driven bibliography maintenance tool for personal BibTeX collections.
 
 It is designed for the workflow where:
 
-- you already have hand-curated `.bib` files,
+- you may already have hand-curated `.bib` files,
 - those manual entries must stay protected,
 - new publications should be discovered from your Google Scholar profile,
 - missing metadata should be enriched from stronger sources such as DOI/Crossref, publisher pages, and arXiv,
@@ -183,71 +183,6 @@ Each update writes:
 
 The HTML report is also used as the preferred email body.
 
-## GitHub Maintenance
+Small preview of the styled HTML/email output:
 
-### Files you should commit
-
-These are the files that define and maintain the project itself:
-
-- [README.md](/Users/f7b/Bib-Agent/README.md)
-- [DESIGN.md](/Users/f7b/Bib-Agent/DESIGN.md)
-- [update_bibs.py](/Users/f7b/Bib-Agent/update_bibs.py)
-- [pyproject.toml](/Users/f7b/Bib-Agent/pyproject.toml)
-- [package.json](/Users/f7b/Bib-Agent/package.json)
-- [package-lock.json](/Users/f7b/Bib-Agent/package-lock.json)
-- everything under [bib_agent](/Users/f7b/Bib-Agent/bib_agent)
-- everything under [scripts](/Users/f7b/Bib-Agent/scripts)
-- everything under [tests](/Users/f7b/Bib-Agent/tests)
-
-Commit [config.example.json](/Users/f7b/Bib-Agent/config.example.json).
-
-Commit [config.json](/Users/f7b/Bib-Agent/config.json) only if:
-
-- you are comfortable publishing the current non-secret local paths and preferences, or
-- you replace sensitive/local-only values with safe shared defaults first.
-
-### Files you should usually not commit
-
-These are machine-local, generated, or sensitive:
-
-- [state/agent_state.json](/Users/f7b/Bib-Agent/state/agent_state.json)
-- [state/last_update_report.txt](/Users/f7b/Bib-Agent/state/last_update_report.txt)
-- [state/last_update_report.json](/Users/f7b/Bib-Agent/state/last_update_report.json)
-- [state/last_update_report.html](/Users/f7b/Bib-Agent/state/last_update_report.html)
-- [state/scholar_storage_state.json](/Users/f7b/Bib-Agent/state/scholar_storage_state.json)
-- [node_modules](/Users/f7b/Bib-Agent/node_modules)
-- [__pycache__](/Users/f7b/Bib-Agent/__pycache__)
-- any local Gmail token/credential files
-- any copied or local-only bib files used for testing
-
-In your current setup, do not commit:
-
-- `~/sys/gmail/gmail_token.json`
-- `~/sys/gmail/gmail_credentials.json`
-
-### Recommended GitHub-safe commit set
-
-If you want a clean maintainable repository, the safest commit set is:
-
-- source code
-- tests
-- `README.md`
-- `DESIGN.md`
-- dependency manifests
-- optionally a sanitized `config.json`
-
-and exclude:
-
-- all `state/` outputs
-- browser session state
-- Gmail credentials/tokens
-- `node_modules/`
-- caches and build outputs
-
-## Suggested Next Cleanup
-
-Before pushing to GitHub, a good next step would be:
-
-1. add a `.gitignore` for `state/`, `node_modules/`, `__pycache__/`, and secret files
-2. keep `config.example.json` with safe placeholder values
-3. keep your real local `config.json` out of version control if it contains personal paths or emails
+![HTML email report preview](docs/email-report-preview.png)
