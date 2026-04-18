@@ -37,8 +37,7 @@ npm install
 
 ### Configure the project
 
-Start from [config.example.json](/Users/f7b/Bib-Agent/config.example.json) and create your local [config.json](/Users/f7b/Bib-Agent/config.json).
-
+Start from [config.example.json](config.example.json) and create your local `config.json`:
 Example:
 
 ```bash
