@@ -38,6 +38,7 @@ Core files:
 
 - [update_bibs.py](/Users/f7b/Bib-Agent/update_bibs.py)
 - [config.json](/Users/f7b/Bib-Agent/config.json)
+- [config.example.json](/Users/f7b/Bib-Agent/config.example.json)
 - [DESIGN.md](/Users/f7b/Bib-Agent/DESIGN.md)
 - [README.md](/Users/f7b/Bib-Agent/README.md)
 
@@ -83,7 +84,15 @@ npm install
 
 ### Configure the project
 
-Edit [config.json](/Users/f7b/Bib-Agent/config.json).
+Start from [config.example.json](/Users/f7b/Bib-Agent/config.example.json) and create your local [config.json](/Users/f7b/Bib-Agent/config.json).
+
+Example:
+
+```bash
+cp config.example.json config.json
+```
+
+Then edit [config.json](/Users/f7b/Bib-Agent/config.json).
 
 The most important sections are:
 
@@ -190,6 +199,8 @@ These are the files that define and maintain the project itself:
 - everything under [scripts](/Users/f7b/Bib-Agent/scripts)
 - everything under [tests](/Users/f7b/Bib-Agent/tests)
 
+Commit [config.example.json](/Users/f7b/Bib-Agent/config.example.json).
+
 Commit [config.json](/Users/f7b/Bib-Agent/config.json) only if:
 
 - you are comfortable publishing the current non-secret local paths and preferences, or
@@ -238,6 +249,5 @@ and exclude:
 Before pushing to GitHub, a good next step would be:
 
 1. add a `.gitignore` for `state/`, `node_modules/`, `__pycache__/`, and secret files
-2. create a `config.example.json` with safe placeholder values
+2. keep `config.example.json` with safe placeholder values
 3. keep your real local `config.json` out of version control if it contains personal paths or emails
-

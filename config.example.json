@@ -1,0 +1,99 @@
+{
+  "scholar": {
+    "profile_id": "YOUR_GOOGLE_SCHOLAR_PROFILE_ID",
+    "language": "en",
+    "sort_by": "pubdate",
+    "page_size": 100,
+    "max_items": 300,
+    "request_timeout_seconds": 20,
+    "min_request_interval_seconds": 1.0
+  },
+  "author_emphasis": {
+    "preserve_original_format": true,
+    "target_names": [
+      "Your Name",
+      "Y Name",
+      "Y. Name",
+      "Name, Your"
+    ],
+    "render_as": "\\textbf{Your Name}"
+  },
+  "auth": {
+    "enabled": true,
+    "storage_state_path": "state/scholar_storage_state.json",
+    "browser_script": "scripts/scholar_browser.mjs",
+    "chrome_executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "chrome_user_data_dir": "~/Library/Application Support/Google/Chrome",
+    "chrome_profile_directory": "Default",
+    "headless": true,
+    "require_session": false
+  },
+  "key_generation": {
+    "prefix": "yourid",
+    "separator": "-"
+  },
+  "managed_block": {
+    "start_marker": "% >>> BIB_AGENT_MANAGED_START >>>",
+    "end_marker": "% <<< BIB_AGENT_MANAGED_END <<<"
+  },
+  "baseline": {
+    "source": "manual_bibs",
+    "cutoff_year": 2025,
+    "stop_after_known_pages": 1
+  },
+  "routing": {
+    "conference": "conference",
+    "journal": "journal",
+    "techreport": "techreport",
+    "default": "techreport"
+  },
+  "update_policy": {
+    "keep_agent_entries_missing_from_profile": true,
+    "refresh_existing_agent_entries": true,
+    "fill_missing_metadata": true,
+    "write_empty_managed_blocks": true
+  },
+  "publisher_metadata": {
+    "enable_landing_page_fetch": true,
+    "max_search_results": 5
+  },
+  "reporting": {
+    "json_report_file": "state/last_update_report.json",
+    "text_report_file": "state/last_update_report.txt",
+    "html_report_file": "state/last_update_report.html",
+    "max_listed_items": 20
+  },
+  "notifications": {
+    "enabled": true,
+    "transport": "gmail_api",
+    "gmail_sender": "your-gmail@gmail.com",
+    "gmail_token_file": "~/sys/gmail/gmail_token.json",
+    "gmail_creds_file": "~/sys/gmail/gmail_credentials.json",
+    "report_from": "your-email@example.com",
+    "report_recipients": [
+      "your-email@example.com"
+    ],
+    "email": "your-email@example.com",
+    "from_email": "your-email@example.com",
+    "subject_prefix": "Bibliography Agent",
+    "sendmail_path": "/usr/sbin/sendmail"
+  },
+  "bib_files": {
+    "conference": {
+      "enabled": true,
+      "label": "Conference Publications",
+      "path": "~/resume/bibs/pub-conference.bib"
+    },
+    "journal": {
+      "enabled": true,
+      "label": "Journal Publications",
+      "path": "~/resume/bibs/pub-journal.bib"
+    },
+    "techreport": {
+      "enabled": true,
+      "label": "Tech Reports and Preprints",
+      "path": "~/resume/bibs/pub-tech-report.bib"
+    }
+  },
+  "state_file": "state/agent_state.json"
+}
