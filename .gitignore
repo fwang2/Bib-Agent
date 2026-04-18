@@ -1,6 +1,5 @@
-.pyc
+*.pyc
 config.json
-
 __pycache__/
 build/
 node_modules/
