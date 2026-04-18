@@ -324,8 +324,14 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
         for item in files
     )
 
+    separator = "&middot;"
+
     return f"""<!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
 <body style="margin:0;padding:24px;background:#f6f8fb;color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
   <div style="max-width:820px;margin:0 auto;background:#ffffff;border:1px solid #e7ebf0;border-radius:16px;overflow:hidden;">
     <div style="padding:22px 24px 16px;background:linear-gradient(180deg,#fbfcfe 0%,#f4f7fb 100%);border-bottom:1px solid #e7ebf0;">
@@ -342,9 +348,9 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
     <div style="padding:18px 24px 8px;">
       {_section_card("Summary", f'''
       <div style="font-size:12px;line-height:1.6;color:#475467;">
-        Rows fetched: <strong>{fetch.get('row_count', 0)}</strong> &nbsp;·&nbsp;
-        Selected: <strong>{fetch.get('selected_count', 0)}</strong> &nbsp;·&nbsp;
-        Files changed: <strong>{summary['changed_file_count']}</strong> &nbsp;·&nbsp;
+        Rows fetched: <strong>{fetch.get('row_count', 0)}</strong> &nbsp;{separator}&nbsp;
+        Selected: <strong>{fetch.get('selected_count', 0)}</strong> &nbsp;{separator}&nbsp;
+        Files changed: <strong>{summary['changed_file_count']}</strong> &nbsp;{separator}&nbsp;
         Possible duplicates: <strong>{summary['possible_duplicates']}</strong>
       </div>
       ''', accent="#e7ebf0", background="#fafbfc")}
@@ -358,7 +364,7 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
             f"<div style=\"font-size:13px;font-weight:600;color:#111827;\">{html.escape(item['category'])}</div>"
             f"<div style=\"font-size:12px;color:#667085;margin-top:2px;\">{html.escape(_shorten_path(item['path']))}</div>"
             f"<div style=\"font-size:12px;color:#344054;margin-top:4px;\">managed entries: <strong>{item['managed_entry_count']}</strong>"
-            f" &nbsp;·&nbsp; manual removals: <strong>{item.get('removed_manual_entry_count', 0)}</strong></div>"
+            f" &nbsp;{separator}&nbsp; manual removals: <strong>{item.get('removed_manual_entry_count', 0)}</strong></div>"
             f"</div>"
             for item in changed_files
         )
