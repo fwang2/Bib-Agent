@@ -6,7 +6,7 @@ import tempfile
 from bib_agent.config import active_bib_files, default_chrome_user_data_dir, detect_chrome_executable, load_config, resolve_path, resolve_routed_category, save_config
 from bib_agent.bibtex import extract_bib_entries, extract_managed_chunks, has_conflict_markers, inject_managed_block_if_missing, remove_bib_entry, strip_managed_block, validate_rendered_chunks
 from bib_agent.cli import _assert_no_conflict_markers, _auto_commit_changed_bibs, _build_notification_message, _first_existing_path, _format_html_report, _format_text_report, _git_repo_root_for_path, _is_manual_techreport_superseded, _notification_should_send
-from bib_agent.metadata import _crossref_search, emphasize_authors, enrich_record, make_bib_key
+from bib_agent.metadata import _crossref_search, _parse_arxiv_atom, bibtex_entry, emphasize_authors, enrich_record, make_bib_key
 from bib_agent.render import _render_tex
 
 
@@ -96,22 +96,25 @@ Analysis of Large-Scale Storage Systems},
         second = make_bib_key(2026, existing, {"prefix": "f7b", "separator": "-"})
         self.assertEqual(second, "f7b-2026d")
 
-    def test_emphasize_authors_preserves_original_name_order(self):
+    def test_emphasize_authors_prefers_full_name_for_last_first(self):
         rendered = emphasize_authors(
             ["Wang, Feiyi", "Lu, Hao"],
             {
+                "prefer_full_name": True,
                 "preserve_original_format": True,
                 "target_names": ["Feiyi Wang", "F Wang", "F. Wang"],
                 "render_as": r"\textbf{Feiyi Wang}",
             },
         )
-        self.assertIn(r"\textbf{Wang, Feiyi}", rendered)
+        self.assertIn(r"\textbf{Feiyi Wang}", rendered)
+        self.assertNotIn(r"\textbf{Wang, Feiyi}", rendered)
         self.assertNotIn(r"{\textbf{Feiyi Wang}}", rendered)
 
     def test_emphasize_authors_matches_initial_variants_without_extra_braces(self):
         rendered = emphasize_authors(
-            ["F. Wang", "Alice Smith"],
+            ["Wang, F.", "Alice Smith"],
             {
+                "prefer_full_name": True,
                 "preserve_original_format": True,
                 "target_names": ["Feiyi Wang", "F Wang", "F. Wang"],
                 "render_as": r"\textbf{Feiyi Wang}",
@@ -199,6 +202,9 @@ Analysis of Large-Scale Storage Systems},
                 "journal": "arXiv preprint arXiv:2602.15277",
                 "url": "https://arxiv.org/abs/2602.15277",
                 "arxiv_id": arxiv_id,
+                "eprint": arxiv_id,
+                "archivePrefix": "arXiv",
+                "primaryClass": "cs.CV",
             }
             enriched = enrich_record(StubClient(), record, 5)
         finally:
@@ -208,6 +214,57 @@ Analysis of Large-Scale Storage Systems},
         self.assertEqual(enriched["title"], record["title"])
         self.assertEqual(enriched["authors"], ["Alahmadi, Muhammad J.", "Gao, Peng", "Wang, Feiyi", "Xu, Dongkuan"])
         self.assertEqual(enriched["arxiv_id"], "2602.15277")
+        self.assertEqual(enriched["primaryClass"], "cs.CV")
+
+    def test_parse_arxiv_atom_extracts_bibtex_ready_fields(self):
+        payload = """<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2602.15277v2</id>
+    <title>Accelerating Large-Scale Dataset Distillation via Exploration-Exploitation Optimization</title>
+    <published>2026-02-17T00:27:58Z</published>
+    <arxiv:primary_category term="cs.CV"/>
+    <author><name>Muhammad J. Alahmadi</name></author>
+    <author><name>Peng Gao</name></author>
+    <author><name>Feiyi Wang</name></author>
+    <author><name>Dongkuan Xu</name></author>
+  </entry>
+</feed>
+"""
+        parsed = _parse_arxiv_atom(payload, "2602.15277")
+        self.assertEqual(parsed["eprint"], "2602.15277")
+        self.assertEqual(parsed["archivePrefix"], "arXiv")
+        self.assertEqual(parsed["primaryClass"], "cs.CV")
+        self.assertEqual(
+            parsed["authors"],
+            ["Alahmadi, Muhammad J.", "Gao, Peng", "Wang, Feiyi", "Xu, Dongkuan"],
+        )
+
+    def test_arxiv_only_record_renders_as_misc(self):
+        entry, details = bibtex_entry(
+            {
+                "category": "techreport",
+                "title": "Accelerating Large-Scale Dataset Distillation via Exploration-Exploitation Optimization",
+                "authors": ["Alahmadi, Muhammad J.", "Gao, Peng", "Wang, Feiyi", "Xu, Dongkuan"],
+                "year": 2026,
+                "arxiv_id": "2602.15277",
+                "eprint": "2602.15277",
+                "archivePrefix": "arXiv",
+                "primaryClass": "cs.CV",
+                "url": "https://arxiv.org/abs/2602.15277",
+            },
+            "f7b-2026c",
+            {"target_names": ["Feiyi Wang", "Wang, Feiyi"], "preserve_original_format": True},
+        )
+        self.assertEqual(details["entry_type"], "misc")
+        self.assertIn("@misc{f7b-2026c,", entry)
+        self.assertIn("eprint = {2602.15277}", entry)
+        self.assertIn("archivePrefix = {arXiv}", entry)
+        self.assertIn("primaryClass = {cs.CV}", entry)
+        self.assertIn(r"\textbf{Feiyi Wang}", entry)
+        self.assertNotIn(r"\textbf{Wang, Feiyi}", entry)
+        self.assertNotIn("institution", entry)
+        self.assertNotIn("Technical Report", entry)
 
     def test_render_tex_references_expected_bib_sections(self):
         tex = _render_tex(

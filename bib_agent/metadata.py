@@ -4,6 +4,7 @@ import html
 import json
 import re
 import urllib.parse
+import xml.etree.ElementTree as ET
 
 from .http import HttpClient, safe_get_text
 
@@ -13,8 +14,8 @@ def normalize_title(value: str) -> str:
 
 
 def _strip_latex_markup(value: str) -> str:
-    cleaned = re.sub(r"\\textbf\s*\{([^}]*)\}", r"\1", value)
-    cleaned = re.sub(r"\\text\s*\{([^}]*)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\+textbf\s*\{([^}]*)\}", r"\1", value)
+    cleaned = re.sub(r"\\+text\s*\{([^}]*)\}", r"\1", cleaned)
     return cleaned.replace("{", "").replace("}", "").strip()
 
 
@@ -134,12 +135,79 @@ def _scholar_authors(detail_fields: dict, row: dict) -> list[str]:
 def _try_fetch_arxiv_metadata(client: HttpClient, arxiv_id: str | None) -> dict:
     if not arxiv_id:
         return {}
+    api_metadata = _try_fetch_arxiv_api_metadata(client, arxiv_id)
+    if api_metadata:
+        return api_metadata
     metadata = _try_fetch_landing_metadata(client, f"https://arxiv.org/abs/{arxiv_id}")
     if metadata:
         metadata["arxiv_id"] = arxiv_id
         metadata["journal"] = metadata.get("journal") or f"arXiv preprint arXiv:{arxiv_id}"
         metadata["url"] = metadata.get("url") or f"https://arxiv.org/abs/{arxiv_id}"
     return metadata
+
+
+def _try_fetch_arxiv_api_metadata(client: HttpClient, arxiv_id: str) -> dict:
+    text = safe_get_text(client, f"https://export.arxiv.org/api/query?id_list={urllib.parse.quote(arxiv_id)}")
+    if not text:
+        return {}
+    try:
+        return _parse_arxiv_atom(text, arxiv_id)
+    except ET.ParseError:
+        return {}
+
+
+def _parse_arxiv_atom(text: str, arxiv_id: str) -> dict:
+    namespaces = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "arxiv": "http://arxiv.org/schemas/atom",
+    }
+    root = ET.fromstring(text)
+    entry = root.find("atom:entry", namespaces)
+    if entry is None:
+        return {}
+
+    title = _collapse_whitespace(_xml_text(entry.find("atom:title", namespaces)))
+    published = _xml_text(entry.find("atom:published", namespaces))
+    primary_category = entry.find("arxiv:primary_category", namespaces)
+    primary_class = primary_category.attrib.get("term") if primary_category is not None else None
+    authors = [
+        _author_to_bibtex_name(_collapse_whitespace(_xml_text(author.find("atom:name", namespaces))))
+        for author in entry.findall("atom:author", namespaces)
+    ]
+    authors = [author for author in authors if author]
+    return {
+        "title": title,
+        "authors": authors,
+        "year": _extract_year(published),
+        "arxiv_id": arxiv_id,
+        "eprint": arxiv_id,
+        "archivePrefix": "arXiv",
+        "primaryClass": primary_class,
+        "journal": f"arXiv preprint arXiv:{arxiv_id}",
+        "url": f"https://arxiv.org/abs/{arxiv_id}",
+        "type": "posted-content",
+    }
+
+
+def _xml_text(element: ET.Element | None) -> str | None:
+    return element.text if element is not None else None
+
+
+def _collapse_whitespace(value: str | None) -> str | None:
+    if not value:
+        return None
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _author_to_bibtex_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    if "," in value:
+        return value
+    parts = value.split()
+    if len(parts) < 2:
+        return value
+    return f"{parts[-1]}, {' '.join(parts[:-1])}"
 
 
 def _choose_authors(*author_lists: list[str] | None) -> list[str]:
@@ -360,10 +428,82 @@ def _person_name_variants(value: str) -> set[str]:
     return {variant for variant in variants if variant}
 
 
+def _is_initial_token(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z]\.?", value.strip()))
+
+
+def _split_family_given(value: str) -> tuple[str, str] | None:
+    cleaned = _strip_latex_markup(value)
+    if "," not in cleaned:
+        return None
+    family, given = [part.strip() for part in cleaned.split(",", 1)]
+    if family and given:
+        return family, given
+    return None
+
+
+def _has_non_initial_given_name(value: str) -> bool:
+    cleaned = _strip_latex_markup(value)
+    family_given = _split_family_given(cleaned)
+    if family_given:
+        _, given = family_given
+        first_given = given.split()[0].rstrip(".")
+        return len(first_given) > 1
+
+    tokens = [token.rstrip(".") for token in re.split(r"[\s,]+", cleaned) if token]
+    return len(tokens) >= 2 and len(tokens[0]) > 1
+
+
+def _initial_author_form(value: str) -> str | None:
+    cleaned = _strip_latex_markup(value)
+    family_given = _split_family_given(cleaned)
+    if family_given:
+        family, given = family_given
+        first_given = given.split()[0]
+        if _is_initial_token(first_given):
+            return f"{first_given[0].upper()}. {family}"
+        return None
+
+    tokens = [token for token in re.split(r"[\s,]+", cleaned) if token]
+    if len(tokens) >= 2 and _is_initial_token(tokens[0]):
+        return f"{tokens[0][0].upper()}. {tokens[-1]}"
+    return None
+
+
+def _canonical_emphasis_name(emphasis_config: dict) -> str | None:
+    render_as = emphasis_config.get("render_as")
+    if render_as:
+        canonical = _strip_latex_markup(render_as)
+        if canonical:
+            return canonical
+    for target in emphasis_config.get("target_names", []):
+        if _has_non_initial_given_name(target):
+            family_given = _split_family_given(target)
+            if family_given:
+                family, given = family_given
+                return f"{given} {family}"
+            return _strip_latex_markup(target)
+    return None
+
+
+def _render_textbf(value: str) -> str:
+    return rf"\textbf{{{value}}}"
+
+
 def _render_emphasized_author(author: str, emphasis_config: dict) -> str:
+    cleaned = _strip_latex_markup(author)
+    if emphasis_config.get("prefer_full_name", True):
+        canonical = _canonical_emphasis_name(emphasis_config)
+        if canonical and _has_non_initial_given_name(cleaned):
+            return _render_textbf(canonical)
+        initial_form = _initial_author_form(cleaned)
+        if initial_form:
+            return _render_textbf(initial_form)
     if emphasis_config.get("preserve_original_format", True):
-        return rf"\textbf{{{_strip_latex_markup(author)}}}"
-    return emphasis_config.get("render_as", r"\textbf{Feiyi Wang}")
+        return _render_textbf(cleaned)
+    canonical = _canonical_emphasis_name(emphasis_config) or cleaned
+    return _render_textbf(canonical)
+
 
 
 def emphasize_authors(authors: list[str], emphasis_config: dict) -> str:
@@ -392,7 +532,10 @@ def latex_escape(value: str) -> str:
 
 def bibtex_entry(record: dict, key: str, emphasis_config: dict) -> tuple[str, dict]:
     category = record["category"]
-    if category == "conference":
+    is_arxiv_only = bool(record.get("arxiv_id")) and not record.get("doi")
+    if is_arxiv_only:
+        entry_type = "misc"
+    elif category == "conference":
         entry_type = "inproceedings"
     elif category == "journal":
         entry_type = "article"
@@ -405,7 +548,11 @@ def bibtex_entry(record: dict, key: str, emphasis_config: dict) -> tuple[str, di
         "year": str(record.get("year") or ""),
     }
 
-    if entry_type == "inproceedings":
+    if is_arxiv_only:
+        fields["eprint"] = record.get("eprint") or record.get("arxiv_id") or ""
+        fields["archivePrefix"] = record.get("archivePrefix") or "arXiv"
+        fields["primaryClass"] = record.get("primaryClass") or ""
+    elif entry_type == "inproceedings":
         fields["booktitle"] = record.get("booktitle") or record.get("journal") or record.get("venue_summary") or ""
     elif entry_type == "article":
         fields["journal"] = record.get("journal") or record.get("venue_summary") or ""
@@ -426,7 +573,24 @@ def bibtex_entry(record: dict, key: str, emphasis_config: dict) -> tuple[str, di
             fields[field_name] = str(field_value)
 
     ordered_fields = []
-    for field_name in ["title", "author", "booktitle", "journal", "year", "volume", "number", "pages", "institution", "type", "publisher", "doi", "url"]:
+    for field_name in [
+        "title",
+        "author",
+        "booktitle",
+        "journal",
+        "year",
+        "volume",
+        "number",
+        "pages",
+        "institution",
+        "type",
+        "publisher",
+        "doi",
+        "eprint",
+        "archivePrefix",
+        "primaryClass",
+        "url",
+    ]:
         value = fields.get(field_name)
         if value:
             ordered_fields.append((field_name, value))

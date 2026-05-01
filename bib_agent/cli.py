@@ -14,6 +14,7 @@ from email.message import EmailMessage
 from pathlib import Path
 import urllib.parse
 import urllib.request
+import urllib.error
 
 from .bibtex import (
     AGENT_PREFIX,
@@ -343,7 +344,7 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
                 + "\">"
                 + (f"<div style=\"font-size:11px;font-weight:700;color:#667085;margin-bottom:4px;\">{html.escape(status)}</div>" if status and highlight else "")
                 + f"<span style=\"color:#111827;font-size:13px;\">{html.escape(item.get('title', 'Untitled'))}</span>"
-                + (f"<div style=\"color:#667085;font-size:12px;margin-top:2px;\">{' · '.join(parts)}</div>" if parts else "")
+                + (f"<div style=\"color:#667085;font-size:12px;margin-top:2px;\">{list_separator.join(parts)}</div>" if parts else "")
                 + "</li>"
             )
         return f"<ul style=\"margin:8px 0 0 0;padding:0;\">{''.join(rows)}</ul>"
@@ -361,6 +362,55 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
     )
 
     separator = "&middot;"
+    list_separator = " &middot; "
+    header_badges = (
+        _badge("Changed", "YES" if report["changed"] else "NO", "green" if report["changed"] else "gray")
+        + _badge("New", str(summary["new_entries"]), "blue")
+        + _badge("Updated", str(summary["updated_entries"]), "amber")
+        + _badge("Mode", fetch.get("mode", "unknown"), "gray")
+    )
+    summary_body = f"""
+      <div style="font-size:12px;line-height:1.6;color:#475467;">
+        Rows fetched: <strong>{fetch.get('row_count', 0)}</strong> &nbsp;{separator}&nbsp;
+        Selected: <strong>{fetch.get('selected_count', 0)}</strong> &nbsp;{separator}&nbsp;
+        Files changed: <strong>{summary['changed_file_count']}</strong> &nbsp;{separator}&nbsp;
+        Possible duplicates: <strong>{summary['possible_duplicates']}</strong>
+      </div>
+      """
+    summary_card = _section_card("Summary", summary_body, accent="#e7ebf0", background="#fafbfc")
+    added_body = f"<div style=\"font-size:12px;color:#475467;\">{render_list(changed_items, ['category', 'key'], highlight=True)}</div>"
+    added_card = _section_card("Added Or Updated", added_body, accent="#d7e7ff", background="#fcfdff")
+    if changed_files:
+        changed_files_body = "".join(
+            (
+                f"<div style=\"padding:10px 12px;margin:0 0 8px 0;border-radius:10px;background:#eef6ff;border-left:3px solid #1f5fbf;\">"
+                f"<div style=\"font-size:13px;font-weight:600;color:#111827;\">{html.escape(item['category'])}</div>"
+                f"<div style=\"font-size:12px;color:#667085;margin-top:2px;\">{html.escape(_shorten_path(item['path']))}</div>"
+                f"<div style=\"font-size:12px;color:#344054;margin-top:4px;\">managed entries: <strong>{item['managed_entry_count']}</strong>"
+                f" &nbsp;{separator}&nbsp; manual removals: <strong>{item.get('removed_manual_entry_count', 0)}</strong></div>"
+                "</div>"
+            )
+            for item in changed_files
+        )
+    else:
+        changed_files_body = "<div style=\"color:#7a8591;font-size:12px;\">None</div>"
+    changed_files_card = _section_card("Changed Files", changed_files_body, accent="#d7e7ff", background="#fcfdff")
+    all_files_body = f"""
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="background:#f8fafc;color:#667085;text-align:left;">
+            <th style="padding:8px 10px;">Category</th>
+            <th style="padding:8px 10px;">Path</th>
+            <th style="padding:8px 10px;text-align:center;">Changed</th>
+            <th style="padding:8px 10px;text-align:center;">Managed</th>
+          </tr>
+        </thead>
+        <tbody>{file_rows}</tbody>
+      </table>
+      """
+    all_files_card = _section_card("All Files", all_files_body, accent="#e7ebf0", background="#ffffff")
+    duplicate_body = f"<div style=\"font-size:12px;color:#475467;\">{render_list(duplicate_items, ['category', 'matched_key'])}</div>"
+    duplicate_card = _section_card("Possible Duplicates", duplicate_body, accent="#f1e6c8", background="#fffcf6")
 
     return f"""<!DOCTYPE html>
 <html>
@@ -374,53 +424,16 @@ def _format_html_report(report: dict, max_listed_items: int) -> str:
       <div style="font-size:22px;font-weight:700;color:#101828;">Bibliography Agent Report</div>
       <div style="font-size:12px;color:#667085;margin-top:4px;">{html.escape(report['date'])}</div>
       <div style="margin-top:14px;">
-        {_badge("Changed", "YES" if report["changed"] else "NO", "green" if report["changed"] else "gray")}
-        {_badge("New", str(summary['new_entries']), "blue")}
-        {_badge("Updated", str(summary['updated_entries']), "amber")}
-        {_badge("Mode", fetch.get('mode', 'unknown'), "gray")}
+        {header_badges}
       </div>
     </div>
 
     <div style="padding:18px 24px 8px;">
-      {_section_card("Summary", f'''
-      <div style="font-size:12px;line-height:1.6;color:#475467;">
-        Rows fetched: <strong>{fetch.get('row_count', 0)}</strong> &nbsp;{separator}&nbsp;
-        Selected: <strong>{fetch.get('selected_count', 0)}</strong> &nbsp;{separator}&nbsp;
-        Files changed: <strong>{summary['changed_file_count']}</strong> &nbsp;{separator}&nbsp;
-        Possible duplicates: <strong>{summary['possible_duplicates']}</strong>
-      </div>
-      ''', accent="#e7ebf0", background="#fafbfc")}
-
-      {_section_card("Added Or Updated", f'<div style="font-size:12px;color:#475467;">{render_list(changed_items, ["category", "key"], highlight=True)}</div>', accent="#d7e7ff", background="#fcfdff")}
-
-      {_section_card("Changed Files", (
-        "<div style=\"color:#7a8591;font-size:12px;\">None</div>" if not changed_files else
-        "".join(
-            f"<div style=\"padding:10px 12px;margin:0 0 8px 0;border-radius:10px;background:#eef6ff;border-left:3px solid #1f5fbf;\">"
-            f"<div style=\"font-size:13px;font-weight:600;color:#111827;\">{html.escape(item['category'])}</div>"
-            f"<div style=\"font-size:12px;color:#667085;margin-top:2px;\">{html.escape(_shorten_path(item['path']))}</div>"
-            f"<div style=\"font-size:12px;color:#344054;margin-top:4px;\">managed entries: <strong>{item['managed_entry_count']}</strong>"
-            f" &nbsp;{separator}&nbsp; manual removals: <strong>{item.get('removed_manual_entry_count', 0)}</strong></div>"
-            f"</div>"
-            for item in changed_files
-        )
-      ), accent="#d7e7ff", background="#fcfdff")}
-
-      {_section_card("All Files", f'''
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead>
-          <tr style="background:#f8fafc;color:#667085;text-align:left;">
-            <th style="padding:8px 10px;">Category</th>
-            <th style="padding:8px 10px;">Path</th>
-            <th style="padding:8px 10px;text-align:center;">Changed</th>
-            <th style="padding:8px 10px;text-align:center;">Managed</th>
-          </tr>
-        </thead>
-        <tbody>{file_rows}</tbody>
-      </table>
-      ''', accent="#e7ebf0", background="#ffffff")}
-
-      {_section_card("Possible Duplicates", f'<div style="font-size:12px;color:#475467;">{render_list(duplicate_items, ["category", "matched_key"])}</div>', accent="#f1e6c8", background="#fffcf6")}
+      {summary_card}
+      {added_card}
+      {changed_files_card}
+      {all_files_card}
+      {duplicate_card}
     </div>
   </div>
 </body>
@@ -456,8 +469,12 @@ def _gmail_api_send(config: dict, message: EmailMessage) -> None:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
-    with urllib.request.urlopen(refresh_request, timeout=20) as response:
-        refresh_result = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(refresh_request, timeout=20) as response:
+            refresh_result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Gmail API token refresh failed: HTTP {exc.code} {exc.reason}\n{body}") from exc
 
     token_data["token"] = refresh_result["access_token"]
     if "expires_in" in refresh_result:
@@ -478,8 +495,12 @@ def _gmail_api_send(config: dict, message: EmailMessage) -> None:
         },
         method="POST",
     )
-    with urllib.request.urlopen(send_request, timeout=20) as response:
-        response.read()
+    try:
+        with urllib.request.urlopen(send_request, timeout=20) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Gmail API send failed: HTTP {exc.code} {exc.reason}\n{body}") from exc
 
 
 def _send_report_email(config: dict, report: dict) -> bool:
@@ -892,7 +913,7 @@ def update(config_path: str) -> None:
             "category": enriched["category"],
             "key": key,
             "scholar_id": scholar_id,
-            "source": "doi" if enriched.get("doi") else "scholar",
+            "source": "doi" if enriched.get("doi") else ("arxiv" if enriched.get("arxiv_id") else "scholar"),
             "doi": enriched.get("doi"),
             "arxiv_id": enriched.get("arxiv_id"),
             "title_fingerprint": normalize_title(enriched.get("title", "")),

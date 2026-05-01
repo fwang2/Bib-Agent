@@ -9,6 +9,7 @@
     "min_request_interval_seconds": 1.0
   },
   "author_emphasis": {
+    "prefer_full_name": true,
     "preserve_original_format": true,
     "target_names": [
       "Your Name",
